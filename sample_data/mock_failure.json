@@ -1,0 +1,26 @@
+[
+  {
+    "component_id": "RDBMS_PRIMARY_01",
+    "component_type": "RDBMS",
+    "error_message": "Connection timeout after 30s — primary DB unreachable",
+    "severity": "CRITICAL"
+  },
+  {
+    "component_id": "CACHE_CLUSTER_01",
+    "component_type": "CACHE",
+    "error_message": "Redis cache miss rate exceeded 90%",
+    "severity": "ERROR"
+  },
+  {
+    "component_id": "API_GATEWAY_01",
+    "component_type": "API",
+    "error_message": "Latency spike — p99 > 5000ms",
+    "severity": "ERROR"
+  },
+  {
+    "component_id": "MQ_BROKER_01",
+    "component_type": "MQ",
+    "error_message": "Message queue depth exceeded 100k — consumers lagging",
+    "severity": "WARNING"
+  }
+]
