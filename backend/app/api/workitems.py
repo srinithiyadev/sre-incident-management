@@ -52,7 +52,6 @@ async def update_status(workitem_id: str, body: StatusUpdate):
     if not row:
         raise HTTPException(status_code=404, detail="WorkItem not found")
 
-    # Block CLOSED if no RCA
     if body.new_status == "CLOSED":
         rca = await database.fetch_one(
             rca_records.select().where(rca_records.c.workitem_id == workitem_id)
@@ -63,7 +62,6 @@ async def update_status(workitem_id: str, body: StatusUpdate):
                 detail="Cannot close incident without RCA. Submit RCA first."
             )
 
-    # State machine validation
     try:
         sm = WorkItemStateMachine(row["status"])
         sm.transition(body.new_status)
@@ -76,7 +74,6 @@ async def update_status(workitem_id: str, body: StatusUpdate):
         .values(status=body.new_status)
     )
 
-    # Update Redis cache
     await redis_client.hset(f"workitem:{workitem_id}", "status", body.new_status)
 
     if body.new_status == "CLOSED":
@@ -92,8 +89,9 @@ async def submit_rca(workitem_id: str, payload: RCAPayload):
     if not row:
         raise HTTPException(status_code=404, detail="WorkItem not found")
 
-    # MTTR calculation
-    mttr = (payload.incident_end - payload.incident_start).total_seconds() / 60
+    start = payload.incident_start.replace(tzinfo=None)
+    end   = payload.incident_end.replace(tzinfo=None)
+    mttr  = (end - start).total_seconds() / 60
 
     await database.execute(
         rca_records.insert().values(
@@ -103,17 +101,16 @@ async def submit_rca(workitem_id: str, payload: RCAPayload):
             category         = payload.category,
             fix_applied      = payload.fix_applied,
             prevention_steps = payload.prevention_steps,
-            incident_start   = payload.incident_start,
-            incident_end     = payload.incident_end,
+            incident_start   = start,
+            incident_end     = end,
             submitted_at     = datetime.utcnow(),
         )
     )
 
-    # Update MTTR on workitem
     await database.execute(
         workitems.update()
         .where(workitems.c.id == workitem_id)
-        .values(mttr_minutes=mttr, end_time=payload.incident_end)
+        .values(mttr_minutes=mttr, end_time=end)
     )
 
     return {"rca_submitted": True, "mttr_minutes": round(mttr, 2)}
