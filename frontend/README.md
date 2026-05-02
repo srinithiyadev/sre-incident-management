@@ -248,37 +248,26 @@ python3 -m pytest tests/test_rca.py -v
 
 ## Project Structure
 
-    sre-incident-management/
-    ├── backend/
-    │   ├── app/
-    │   │   ├── api/
-    │   │   │   ├── health.py
-    │   │   │   ├── signals.py
-    │   │   │   └── workitems.py
-    │   │   ├── models/
-    │   │   │   └── workitem.py
-    │   │   ├── services/
-    │   │   │   ├── debounce.py
-    │   │   │   ├── state_machine.py
-    │   │   │   └── metrics.py
-    │   │   ├── core/
-    │   │   │   ├── config.py
-    │   │   │   └── database.py
-    │   │   └── main.py
-    │   ├── tests/
-    │   │   └── test_rca.py
-    │   ├── Dockerfile
-    │   └── requirements.txt
-    ├── frontend/
-    │   ├── src/
-    │   │   ├── components/
-    │   │   └── api.js
-    │   └── Dockerfile
-    ├── prometheus/
-    ├── sample_data/
-    ├── docs/
-    ├── docker-compose.yml
-    └── README.md
+```text
+sre-incident-management/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── models/
+│   │   ├── services/
+│   │   └── core/
+│   ├── tests/
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   └── Dockerfile
+├── prometheus/
+├── sample_data/
+├── docs/
+├── docker-compose.yml
+└── README.md
+```
 ---
 
 ## Author
