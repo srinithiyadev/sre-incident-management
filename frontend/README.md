@@ -1,70 +1,297 @@
-# Getting Started with Create React App
+# SRE Incident Management System
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Built by Srinithiya M for the Zeotap Infrastructure / SRE Intern Assignment.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## What This System Does
 
-### `npm start`
+In a production environment, hundreds of services emit error signals every second.
+Without a system to manage these signals, engineers get overwhelmed.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+This IMS solves that by:
+- Ingesting high-volume signals without crashing
+- Grouping related signals into one incident (debouncing)
+- Guiding engineers through a structured resolution workflow
+- Enforcing Root Cause Analysis before closing any incident
+- Providing real-time visibility via Grafana dashboards
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+---
 
-### `npm test`
+## Architecture
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+┌─────────────────────────────────────────────┐
+                │           SIGNAL PRODUCERS                   │
+                │  (APIs, RDBMS, Cache, MQ, NoSQL, MCP Hosts) │
+                └──────────────────┬──────────────────────────┘
+                                   │ HTTP POST /api/signals
+                                   ▼
+                ┌─────────────────────────────────────────────┐
+                │         FASTAPI BACKEND (Async)              │
+                │                                              │
+                │  ┌─────────────┐    ┌──────────────────┐   │
+                │  │ Rate Limiter│    │  Debounce Engine  │   │
+                │  │ 1000 req/s  │───▶│  10s window       │   │
+                │  └─────────────┘    └────────┬─────────┘   │
+                │                              │               │
+                │              ┌───────────────┼────────────┐ │
+                │              ▼               ▼            ▼ │
+                │        ┌──────────┐  ┌──────────┐  ┌───────┐│
+                │        │ MongoDB  │  │PostgreSQL│  │ Redis ││
+                │        │(Raw Log) │  │(WorkItems│  │(Cache)││
+                │        └──────────┘  │   + RCA) │  └───────┘│
+                │                      └──────────┘           │
+                │  ┌──────────────────────────────────────┐   │
+                │  │         Prometheus /metrics           │   │
+                │  └──────────────────────────────────────┘   │
+                └─────────────────────────────────────────────┘
+                                   │
+                ┌──────────────────┼──────────────────────────┐
+                │                  │                           │
+                ▼                  ▼                           ▼
+         ┌──────────┐      ┌──────────────┐          ┌──────────────┐
+         │  React   │      │  Prometheus  │          │   Grafana    │
+         │Dashboard │      │  (Metrics)   │─────────▶│ (Dashboard)  │
+         └──────────┘      └──────────────┘          └──────────────┘
 
-### `npm run build`
+---
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Tech Stack & Why
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+| Component | Technology | Why I Chose It |
+|---|---|---|
+| Backend | FastAPI (Python) | Native async support handles 10k signals/sec without blocking |
+| Signal Queue | Redis Streams | Production-capable buffer — prevents backend crash during DB slowness |
+| Raw Signal Store | MongoDB | Schema-free — every signal payload shape is different |
+| Work Items + RCA | PostgreSQL | ACID transactions ensure state changes are atomic |
+| Hot Cache | Redis | Sub-millisecond reads for live dashboard — no DB query on every refresh |
+| Metrics | Prometheus + Grafana | Industry standard — leveraged from my prior SRE project experience |
+| Frontend | React | Component-based UI with auto-refresh every 5 seconds |
+| Packaging | Docker Compose | One-command setup for all 6 services |
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Production Upgrade Path
 
-### `npm run eject`
+| Current | At Scale |
+|---|---|
+| Redis Streams | Apache Kafka (millions/sec) |
+| Single PostgreSQL | Patroni HA Cluster |
+| Docker Compose | Kubernetes + HPA |
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+---
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## How I Handled Backpressure
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Backpressure is what happens when signals arrive faster than the persistence layer can handle.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### The Problem
+If 10,000 signals/sec arrive and MongoDB can only write 1,000/sec the system crashes.
 
-## Learn More
+### My Solution — Three Layers
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+**Layer 1 — Rate Limiter (First Defense)**
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Ingestion API has a rate limiter of 1000 requests/sec per IP.
+If exceeded the API returns HTTP 429 Too Many Requests immediately.
 
-### Code Splitting
+**Layer 2 — Async Processing (Second Defense)**
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+FastAPI processes each signal asynchronously using async/await.
+One slow DB write never blocks other signals from being processed.
 
-### Analyzing the Bundle Size
+**Layer 3 — Debouncing (Third Defense)**
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+100 signals for CACHE_CLUSTER_01 in 10 seconds creates only 1 WorkItem in PostgreSQL.
+All 100 signals are stored in MongoDB.
+This reduces PostgreSQL write load by up to 99%.
 
-### Making a Progressive Web App
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## Design Patterns Used
 
-### Advanced Configuration
+### 1. State Pattern — Incident Lifecycle
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+Manages valid transitions only:
 
-### Deployment
+OPEN → INVESTIGATING → RESOLVED → CLOSED
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Invalid transitions are rejected with a clear error message.
+CLOSED state requires a complete RCA — enforced automatically.
 
-### `npm run build` fails to minify
+### 2. Strategy Pattern — Priority Assignment
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Different component types get different priorities automatically:
+
+- RDBMS → P0 (most critical)
+- API → P1 (high)
+- MQ → P1 (high)
+- CACHE → P2 (medium)
+
+New component types can be added without changing core logic.
+
+### 3. Debounce Pattern — Signal Deduplication
+
+Signal arrives → Check component_id in memory window.
+If seen within 10 seconds → Skip WorkItem creation, increment counter.
+If new or expired → Create WorkItem, reset window.
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/srinithiyadev/sre-incident-management.git
+cd sre-incident-management
+docker-compose up --build
+```
+
+Wait 2 minutes for all services to initialize.
+
+### Access Points
+
+| Service | URL |
+|---|---|
+| Frontend Dashboard | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| API Documentation | http://localhost:8000/docs |
+| Health Check | http://localhost:8000/health |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 (admin/admin) |
+
+---
+
+## Simulate a Failure
+
+```bash
+cd sample_data
+python3 mock_failure.py
+```
+
+This simulates:
+1. RDBMS outage — 20 signals → 1 P0 incident
+2. MCP Host failure — 15 signals → 1 P1 incident
+3. Cache degradation — 10 signals → 1 P2 incident
+4. Queue overflow — 10 signals → 1 P1 incident
+
+---
+
+## Incident Workflow
+
+1. Signal arrives → Debounce → WorkItem created as OPEN
+2. Engineer sees alert on dashboard
+3. Moves to INVESTIGATING and starts working
+4. Applies fix and moves to RESOLVED
+5. Fills RCA form (mandatory)
+6. System calculates MTTR automatically
+7. Moves to CLOSED
+
+If engineer tries to CLOSE without RCA the system returns:
+Cannot close incident without RCA. Submit RCA first.
+
+---
+
+## Unit Tests
+
+```bash
+cd backend
+python3 -m pytest tests/test_rca.py -v
+```
+
+12 tests covering:
+- All valid state transitions
+- All invalid state transitions
+- RCA field validation
+- MTTR calculation accuracy
+
+---
+
+## Non-Functional Features
+
+| Feature | Implementation | Benefit |
+|---|---|---|
+| Rate Limiting | 1000 req/sec per IP | Prevents cascade failures |
+| Health Check | /health endpoint | Monitors all 3 databases |
+| Throughput Metrics | Console every 5 sec | Real-time visibility |
+| Prometheus Metrics | /metrics endpoint | Grafana integration |
+| CORS | Configured middleware | Secure frontend access |
+| Input Validation | Pydantic models | Prevents bad data |
+| Auto Restart | Docker restart policy | Self-healing services |
+
+---
+
+## Screenshots
+
+### Live Incident Dashboard
+![Incident List](docs/screenshots/incident-list.png)
+
+### Incident Detail with Raw Signals
+![Incident Detail](docs/screenshots/incident-detail.png)
+
+### RCA Form
+![RCA Form](docs/screenshots/rca-form.png)
+
+### Grafana Metrics Dashboard
+![Grafana](docs/screenshots/grafana-dashboard.png)
+
+### Health Check
+![Health](docs/screenshots/health-check.png)
+
+### API Documentation
+![Swagger](docs/screenshots/swagger-docs.png)
+
+### Mock Failure Simulation
+![Mock](docs/screenshots/mock-simulation.png)
+
+### Unit Tests — 12/12 Passing
+![Tests](docs/screenshots/unit-tests.png)
+
+---
+
+## Project Structure
+
+sre-incident-management/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── health.py
+│   │   │   ├── signals.py
+│   │   │   └── workitems.py
+│   │   ├── models/
+│   │   │   └── workitem.py
+│   │   ├── services/
+│   │   │   ├── debounce.py
+│   │   │   ├── state_machine.py
+│   │   │   └── metrics.py
+│   │   ├── core/
+│   │   │   ├── config.py
+│   │   │   └── database.py
+│   │   └── main.py
+│   ├── tests/
+│   │   └── test_rca.py
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── IncidentList.js
+│   │   │   ├── IncidentDetail.js
+│   │   │   └── RCAForm.js
+│   │   ├── App.js
+│   │   └── api.js
+│   └── Dockerfile
+├── prometheus/
+│   └── prometheus.yml
+├── sample_data/
+│   ├── mock_failure.py
+│   └── mock_failure.json
+├── docs/
+│   └── screenshots/
+├── docker-compose.yml
+└── README.md
+
+---
+
+## Author
+
+**Srinithiya M**
+GitHub: https://github.com/srinithiyadev/sre-incident-management
+Assignment: Zeotap Infrastructure / SRE Intern 2026
