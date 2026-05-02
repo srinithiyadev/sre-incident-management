@@ -248,50 +248,43 @@ python3 -m pytest tests/test_rca.py -v
 
 ## Project Structure
 
-sre-incident-management/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── health.py
-│   │   │   ├── signals.py
-│   │   │   └── workitems.py
-│   │   ├── models/
-│   │   │   └── workitem.py
-│   │   ├── services/
-│   │   │   ├── debounce.py
-│   │   │   ├── state_machine.py
-│   │   │   └── metrics.py
-│   │   ├── core/
-│   │   │   ├── config.py
-│   │   │   └── database.py
-│   │   └── main.py
-│   ├── tests/
-│   │   └── test_rca.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── IncidentList.js
-│   │   │   ├── IncidentDetail.js
-│   │   │   └── RCAForm.js
-│   │   ├── App.js
-│   │   └── api.js
-│   └── Dockerfile
-├── prometheus/
-│   └── prometheus.yml
-├── sample_data/
-│   ├── mock_failure.py
-│   └── mock_failure.json
-├── docs/
-│   └── screenshots/
-├── docker-compose.yml
-└── README.md
-
+    sre-incident-management/
+    ├── backend/
+    │   ├── app/
+    │   │   ├── api/
+    │   │   │   ├── health.py
+    │   │   │   ├── signals.py
+    │   │   │   └── workitems.py
+    │   │   ├── models/
+    │   │   │   └── workitem.py
+    │   │   ├── services/
+    │   │   │   ├── debounce.py
+    │   │   │   ├── state_machine.py
+    │   │   │   └── metrics.py
+    │   │   ├── core/
+    │   │   │   ├── config.py
+    │   │   │   └── database.py
+    │   │   └── main.py
+    │   ├── tests/
+    │   │   └── test_rca.py
+    │   ├── Dockerfile
+    │   └── requirements.txt
+    ├── frontend/
+    │   ├── src/
+    │   │   ├── components/
+    │   │   └── api.js
+    │   └── Dockerfile
+    ├── prometheus/
+    ├── sample_data/
+    ├── docs/
+    ├── docker-compose.yml
+    └── README.md
 ---
 
 ## Author
 
 **Srinithiya M**
+
 GitHub: https://github.com/srinithiyadev/sre-incident-management
+
 Assignment: Zeotap Infrastructure / SRE Intern 2026
